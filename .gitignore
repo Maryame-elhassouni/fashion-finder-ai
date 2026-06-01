@@ -1,0 +1,16 @@
+# environnement virtuel
+venv/
+env/
+
+# fichiers Python compilés
+__pycache__/
+*.pyc
+
+# fichier sensible (IMPORTANT)
+.env
+
+# logs
+*.log
+
+# système
+.DS_Store
