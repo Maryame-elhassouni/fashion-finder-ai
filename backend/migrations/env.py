@@ -8,6 +8,10 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 # Seulement après, importer vos modules qui lisent les settings
 from backend.app.core.database import Base, init_db
 import backend.app.models  # pour que les modèles soient enregistrés dans Base.metadata
+from backend.app.models.category       import Category
+from backend.app.models.user           import User
+from backend.app.models.article        import Article
+from backend.app.models.search_history import SearchHistory
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
