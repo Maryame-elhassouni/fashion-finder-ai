@@ -1,15 +1,23 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from backend.app.api.routes import auth, users, categories, articles , search
+
+
 
 app = FastAPI(
     title="Fashion Finder IA",
     description="Recherche vestimentaire par description — propulsé par Gemini",
     version="1.0.0"
 )
-
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(articles.router)
+app.include_router(categories.router)
+app.include_router(search.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
