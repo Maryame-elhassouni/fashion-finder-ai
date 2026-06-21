@@ -24,7 +24,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov email-validator
 
       - name: Lint flake8
         working-directory: ./backend
@@ -41,7 +41,7 @@ jobs:
           ACCESS_TOKEN_EXPIRE_MINUTES: "30"
           GEMINI_API_KEY: fake-gemini-key-for-ci
         run: |
-          pytest tests/ -v \
+          pytest backend/tests/ -v \
             --cov=app \
             --cov-report=xml \
             --cov-fail-under=90

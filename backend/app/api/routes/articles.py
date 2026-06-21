@@ -11,16 +11,17 @@ from backend.app.schemas.article import (
 )
 router = APIRouter(prefix="/articles", tags=["Articles"])
 
+
 @router.get("/", response_model=ArticleListResponse)
 def get_articles(
     page: int = Query(1, ge=1),
     size: int = Query(12, ge=1, le=50),
-    db:   Session = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """Liste paginée de tous les articles."""
     offset = (page - 1) * size
-    total  = db.query(Article).count()
-    items  = (
+    total = db.query(Article).count()
+    items = (
         db.query(Article)
         .options(joinedload(Article.category))
         .offset(offset)
@@ -28,6 +29,8 @@ def get_articles(
         .all()
     )
     return ArticleListResponse(total=total, page=page, size=size, articles=items)
+
+
 @router.get("/stats", response_model=ArticleStats)
 def get_articles_stats(db: Session = Depends(get_db)):
     """Statistiques globales du catalogue."""
@@ -46,22 +49,24 @@ def get_articles_stats(db: Session = Depends(get_db)):
         .all()
     )
     by_category = {row.slug: row.count for row in by_cat_raw}
-    total_cats  = db.query(func.count(Category.id)).scalar()
+    total_cats = db.query(func.count(Category.id)).scalar()
 
     return ArticleStats(
-        total_articles   = stats.total or 0,
+        total_articles  = stats.total or 0,
         total_categories = total_cats or 0,
-        avg_price        = round(stats.avg_price or 0, 2),
-        min_price        = stats.min_price or 0,
-        max_price        = stats.max_price or 0,
-        by_category      = by_category
+        avg_price = round(stats.avg_price or 0, 2),
+        min_price = stats.min_price or 0,
+        max_price = stats.max_price or 0,
+        by_category = by_category
     )
+
+
 @router.get("/category/{slug}", response_model=ArticleListResponse)
 def get_articles_by_category(
     slug: str,
     page: int = Query(1, ge=1),
     size: int = Query(12, ge=1, le=50),
-    db:   Session = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """Articles filtrés par slug de catégorie."""
     query = (
@@ -73,6 +78,7 @@ def get_articles_by_category(
     total = query.count()
     items = query.offset((page - 1) * size).limit(size).all()
     return ArticleListResponse(total=total, page=page, size=size, articles=items)
+
 
 @router.get("/{article_id}", response_model=ArticleResponse)
 def get_article(article_id: int, db: Session = Depends(get_db)):
@@ -86,6 +92,8 @@ def get_article(article_id: int, db: Session = Depends(get_db)):
     if not article:
         raise HTTPException(status_code=404, detail="Article introuvable")
     return article
+
+
 @router.post("/", response_model=ArticleResponse, status_code=201)
 def create_article(
     data:         ArticleCreate,
@@ -110,10 +118,10 @@ def create_article(
     return article
 @router.patch("/{article_id}", response_model=ArticleResponse)
 def update_article(
-    article_id:   int,
-    data:         ArticleUpdate,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_user)
+    article_id: int,
+    data: ArticleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Mise à jour partielle (PATCH) — seuls les champs fournis sont modifiés."""
     article = (
@@ -144,11 +152,13 @@ def update_article(
         .filter(Article.id == article_id)
         .first()
     )    
+
+
 @router.delete("/{article_id}", status_code=204)
 def delete_article(
-    article_id:   int,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_user)
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Supprimer un article (authentifié)."""
     article = db.query(Article).filter(Article.id == article_id).first()
