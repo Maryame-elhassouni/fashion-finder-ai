@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from backend.app.core.database import get_db
 from backend.app.core.security import get_current_user
 from backend.app.models.article import Article
@@ -79,6 +80,32 @@ def get_articles_by_category(
     items = query.offset((page - 1) * size).limit(size).all()
     return ArticleListResponse(total=total, page=page, size=size, articles=items)
 
+@router.get("/stats", response_model=ArticleStats)
+def get_articles_stats(db: Session = Depends(get_db)):
+    stats = db.query(
+        func.count(Article.id).label("total"),
+        func.avg(Article.price).label("avg_price"),
+        func.min(Article.price).label("min_price"),
+        func.max(Article.price).label("max_price"),
+    ).first()
+
+    by_cat_raw = (
+        db.query(Category.slug, func.count(Article.id).label("count"))
+        .join(Article, Article.category_id == Category.id)
+        .group_by(Category.slug).all()
+    )
+    by_category = {row.slug: row.count for row in by_cat_raw}
+    total_cats = db.query(func.count(Category.id)).scalar()
+
+    return ArticleStats(
+        total_articles=stats.total or 0,
+        total_categories=total_cats or 0,
+        avg_price=round(stats.avg_price or 0, 2),
+        min_price=stats.min_price or 0,
+        max_price=stats.max_price or 0,
+        by_category=by_category
+    )
+
 
 @router.get("/{article_id}", response_model=ArticleResponse)
 def get_article(article_id: int, db: Session = Depends(get_db)):
@@ -118,17 +145,14 @@ def create_article(
     return article
 @router.patch("/{article_id}", response_model=ArticleResponse)
 def update_article(
-    article_id: int,
-    data: ArticleUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    article_id:   int,
+    data:         ArticleUpdate,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user)
 ):
-    """Mise à jour partielle (PATCH) — seuls les champs fournis sont modifiés."""
     article = (
-        db.query(Article)
-        .options(joinedload(Article.category))
-        .filter(Article.id == article_id)
-        .first()
+        db.query(Article).options(joinedload(Article.category))
+        .filter(Article.id == article_id).first()
     )
     if not article:
         raise HTTPException(status_code=404, detail="Article introuvable")
@@ -136,22 +160,19 @@ def update_article(
     update_data = data.to_update_dict()
     if not update_data:
         raise HTTPException(status_code=400, detail="Aucun champ fourni")
-
     if "category_id" in update_data:
         if not db.query(Category).filter(Category.id == update_data["category_id"]).first():
             raise HTTPException(status_code=404, detail="Catégorie introuvable")
 
     for field, value in update_data.items():
         setattr(article, field, value)
+
     db.commit()
     db.refresh(article)
-
     return (
-        db.query(Article)
-        .options(joinedload(Article.category))
-        .filter(Article.id == article_id)
-        .first()
-    )    
+        db.query(Article).options(joinedload(Article.category))
+        .filter(Article.id == article_id).first()
+    )
 
 
 @router.delete("/{article_id}", status_code=204)
