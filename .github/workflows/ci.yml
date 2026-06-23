@@ -41,7 +41,7 @@ jobs:
           ACCESS_TOKEN_EXPIRE_MINUTES: "30"
           GEMINI_API_KEY: fake-gemini-key-for-ci
         run: |
-          pytest backend/tests/ -v \
+          pytest tests/ -v \
             --cov=app \
             --cov-report=xml \
             --cov-fail-under=90
