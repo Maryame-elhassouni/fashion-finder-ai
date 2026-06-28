@@ -6,6 +6,7 @@ def extract_keywords(description: str) -> list[str]:
         "avec","pour","sur","dans","par","qui","que","est","son","sa"
     }
     words = description.lower().split()
+    
     return [
         w.strip(".,!?;:") for w in words
         if len(w) > 2 and w not in stop_words

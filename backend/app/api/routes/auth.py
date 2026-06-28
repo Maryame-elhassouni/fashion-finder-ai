@@ -19,7 +19,7 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     )
     db.add(user)
     db.commit()
-    
+    db.refresh(user)
     token = create_access_token({"sub": user.email, "id": user.id})
     return TokenResponse(
         access_token=token,
