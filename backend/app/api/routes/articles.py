@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
-from backend.app.core.database import get_db
-from backend.app.core.security import get_current_user
-from backend.app.models.article import Article
-from backend.app.models.category import Category
-from backend.app.models.user import User
-from backend.app.schemas.article import (
+from app.core.database import get_db
+from app.core.security import get_current_user
+from app.models.article import Article
+from app.models.category import Category
+from app.models.user import User
+from app.schemas.article import (
     ArticleCreate, ArticleUpdate, ArticleResponse,
     ArticleListResponse, ArticleStats
 )

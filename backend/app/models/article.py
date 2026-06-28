@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from backend.app.core.database import Base
+from app.core.database import Base
 
 class Article(Base):
     __tablename__ = "articles"

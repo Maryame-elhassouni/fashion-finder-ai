@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from backend.app.schemas.article import ArticleCreate, ArticleUpdate
+from app.schemas.article import ArticleCreate, ArticleUpdate
 
 BASE = {
     "name": "Veste en Cuir Noir",

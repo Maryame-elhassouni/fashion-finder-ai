@@ -1,7 +1,7 @@
-from backend.app.core.database import SessionLocal
-from backend.app.models.article import Article
-from backend.app.models.category import Category
-
+from app.core.config import settings
+from app.models.article import Article
+from app.models.category import Category
+import app.core.database as database
 
 ARTICLES = [
     {"name":"T-shirt oversize coton blanc","description":"T-shirt ample en coton bio 100% ...","price":29.90,"brand":"Sézane","category_slug":"hauts"},
@@ -32,37 +32,38 @@ ARTICLES = [
 ]
 
 
-def seed_articles():
-    db = SessionLocal()
+database.init_engine(settings.DATABASE_URL)
 
-    try:
-        inserted = 0
 
-        for a in ARTICLES:
-            slug = a["category_slug"]
+def seed_articles(db):
+    inserted = 0
 
-            cat = db.query(Category).filter(Category.slug == slug).first()
-            if not cat:
-                print(f"⚠ catégorie introuvable: {slug}")
-                continue
+    for article_data in ARTICLES:
 
-            exists = db.query(Article).filter(Article.name == a["name"]).first()
-            if exists:
-                continue
+        category = db.query(Category).filter(
+            Category.slug == article_data["category_slug"]
+        ).first()
 
-            article = Article(
-                name=a["name"],
-                description=a["description"],
-                price=a["price"],
-                brand=a["brand"],
-                category_id=cat.id
-            )
+        if not category:
+            continue
 
-            db.add(article)
-            inserted += 1
+        exists = db.query(Article).filter(
+            Article.name == article_data["name"]
+        ).first()
 
-        db.commit()
-        return inserted
+        if exists:
+            continue
 
-    finally:
-        db.close()
+        article = Article(
+            name=article_data["name"],
+            description=article_data["description"],
+            price=article_data["price"],
+            brand=article_data["brand"],
+            category_id=category.id,
+        )
+
+        db.add(article)
+        inserted += 1
+
+    db.commit()
+    return inserted

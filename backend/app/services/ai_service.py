@@ -1,9 +1,9 @@
 import json
 import google.generativeai as genai
-from backend.app.core.config import settings
+from app.core.config import settings
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
-model = genai.GenerativeModel("models/gemini-2.5-flash")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 def extract_attributes(description: str) -> dict:
     prompt = f"""
@@ -20,13 +20,19 @@ Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
         print(f"[Gemini] erreur: {e}")
         return {"couleur":"","matiere":"","style":"","coupe":"","categorie_slug":"hauts"}
 
-def classify_category(description: str) -> str:
-    prompt = f'Classe ce vêtement. Description: "{description}". Réponds UN SEUL MOT parmi: hauts, bas, robes, vestes, chaussures, accessoires'
+def enrich_query(description: str) -> str:
+    """
+    Utilise Gemini pour enrichir la description utilisateur
+    avant de générer son embedding — améliore la recherche vectorielle.
+    """
+    prompt = f"""
+Reformule cette description de vêtement en ajoutant des synonymes et
+termes mode pertinents pour améliorer une recherche. Reste concis (1 phrase).
+Description : "{description}"
+Réponds uniquement avec la description enrichie, sans préambule.
+"""
     try:
-        resp  = model.generate_content(prompt)
-        slug  = resp.text.strip().lower().split()[0]
-        valid = {"hauts","bas","robes","vestes","chaussures","accessoires"}
-        return slug if slug in valid else "hauts"
-    except:
-        return "hauts"    
-    
+        resp = model.generate_content(prompt)
+        return resp.text.strip()
+    except Exception:
+        return description  # fallback sur la description originale

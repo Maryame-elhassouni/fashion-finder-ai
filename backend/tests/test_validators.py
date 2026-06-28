@@ -1,8 +1,8 @@
 """Tests unitaires des validateurs Pydantic — aucune BDD."""
 import pytest
 from pydantic import ValidationError
-from backend.app.schemas.article import ArticleCreate, ArticleUpdate
-from backend.app.schemas.auth import UserRegister
+from app.schemas.article import ArticleCreate, ArticleUpdate
+from app.schemas.auth import UserRegister
 
 BASE = {
     "name": "Veste Cuir Noir",

@@ -1,8 +1,8 @@
-from backend.app.core.database import SessionLocal
-from backend.app.models.category import Category
-import backend.app.core.database as database
-from backend.app.core.config import settings
-from backend.app.models import *
+from app.core.database import SessionLocal
+from app.models.category import Category
+import app.core.database as database
+from app.core.config import settings
+from app.models import *
 
 CATEGORIES = [
     {"name": "Hauts",             "slug": "hauts",        "icon_emoji": "👕"},

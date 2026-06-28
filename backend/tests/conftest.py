@@ -1,52 +1,57 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.main import app
-from backend.app.core.database import Base, get_db
-from backend.app.models.category import Category
+from app.main import app
+from app.core.database import Base, get_db
+from app.models.category import Category
+from seed_articles import seed_articles
 
-from backend.seed_articles import seed_articles  # ⚠️ IMPORTANT: import module, pas variable
 
 # =========================
-# DB TEST
+# TEST DATABASE
 # =========================
-TEST_DB = "sqlite:///./test.db"
+TEST_DB_URL = "sqlite:///./test.db"
+
 engine_test = create_engine(
-    TEST_DB,
+    TEST_DB_URL,
     connect_args={"check_same_thread": False}
 )
 
-TestingSession = sessionmaker(
+TestingSessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine_test
 )
 
+
 # =========================
-# OVERRIDE DB
+# OVERRIDE DB DEPENDENCY
 # =========================
 def override_get_db():
-    db = TestingSession()
+    db = TestingSessionLocal()
     try:
         yield db
     finally:
         db.close()
 
+
 app.dependency_overrides[get_db] = override_get_db
 
+
 # =========================
-# SETUP DB (CATEGORIES ONLY)
+# SETUP DATABASE (CLEAN EACH TEST)
 # =========================
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.drop_all(bind=engine_test)
     Base.metadata.create_all(bind=engine_test)
 
-    db = TestingSession()
+    db = TestingSessionLocal()
     try:
-        cats = [
+        categories = [
             Category(name="Hauts", slug="hauts", icon_emoji="👕"),
             Category(name="Robes", slug="robes", icon_emoji="👗"),
             Category(name="Vestes", slug="vestes", icon_emoji="🧥"),
@@ -54,7 +59,7 @@ def setup_db():
             Category(name="Chaussures", slug="chaussures", icon_emoji="👟"),
             Category(name="Accessoires", slug="accessoires", icon_emoji="👜"),
         ]
-        db.add_all(cats)
+        db.add_all(categories)
         db.commit()
     finally:
         db.close()
@@ -63,15 +68,17 @@ def setup_db():
 
     Base.metadata.drop_all(bind=engine_test)
 
+
 # =========================
-# CLIENT
+# TEST CLIENT
 # =========================
 @pytest.fixture
 def client():
     return TestClient(app)
 
+
 # =========================
-# AUTH
+# AUTH FIXTURE
 # =========================
 @pytest.fixture
 def auth_headers(client):
@@ -86,27 +93,58 @@ def auth_headers(client):
         "password": "testpass123"
     })
 
+    token = resp.json()["access_token"]
+
     return {
-        "Authorization": f"Bearer {resp.json()['access_token']}"
+        "Authorization": f"Bearer {token}"
     }
 
+
 # =========================
-# ARTICLES SEED FIX (IMPORTANT)
+# CATEGORY IDS FIXTURE
+# =========================
+@pytest.fixture
+def cat_ids(client):
+    resp = client.get("/categories/")
+    return {c["slug"]: c["id"] for c in resp.json()}
+
+
+# =========================
+# ARTICLE FIXTURE (IMPORTANT)
+# =========================
+@pytest.fixture
+def article(client, auth_headers, cat_ids):
+    resp = client.post("/articles/", headers=auth_headers, json={
+        "name": "Veste Test",
+        "description": "Article test",
+        "price": 120,
+        "brand": "TestBrand",
+        "category_id": cat_ids["vestes"]
+    })
+
+    assert resp.status_code == 201
+    return resp.json()
+
+
+# =========================
+# OPTIONAL SEED (if needed)
 # =========================
 @pytest.fixture
 def seeded_articles():
-    
+    db = TestingSessionLocal()
+    try:
+        seed_articles(db)
+    finally:
+        db.close()
 
-    seed_articles   # 👈 TU DOIS avoir une fonction seed(db)
 
-    yield
-
-# =========================
-# FIX FINAL SEED
-# =========================
 @pytest.fixture
 def seeded(seeded_articles, auth_headers):
     return {
-        "ok": True,
         "auth_headers": auth_headers
     }
+
+@pytest.fixture
+def skip_if_no_gemini_key():
+    if not os.environ.get("GEMINI_API_KEY") or "fake" in os.environ.get("GEMINI_API_KEY", ""):
+        pytest.skip("Pas de vraie clé Gemini disponible")

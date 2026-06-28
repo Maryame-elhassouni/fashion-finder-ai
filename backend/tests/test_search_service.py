@@ -1,7 +1,7 @@
-from backend.app.services.search_service import (
+from app.services.search_service import (
     extract_keywords, compute_relevance_score, score_to_label
 )
-from backend.app.models.article import Article
+from app.models.article import Article
 
 def make_article(name, description):
     return Article(

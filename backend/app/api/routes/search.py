@@ -5,23 +5,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 
-from backend.app.core.database import get_db
-from backend.app.core.security import get_optional_user, get_current_user
+from app.core.database import get_db
+from app.core.security import get_optional_user, get_current_user
 
-from backend.app.models.article import Article
-from backend.app.models.category import Category
-from backend.app.models.search_history import SearchHistory
-from backend.app.models.user import User
+from app.models.article import Article
+from app.models.category import Category
+from app.models.search_history import SearchHistory
+from app.models.user import User
 
-from backend.app.schemas.search import (
+from app.schemas.search import (
     SearchRequest,
     SearchResponse,
     ArticleWithScore,
     SortBy
 )
 
-from backend.app.schemas.article import ArticleResponse
-from backend.app.services.search_service import (
+from app.schemas.article import ArticleResponse
+from app.services.search_service import (
     extract_keywords,
     compute_relevance_score,
     score_to_label

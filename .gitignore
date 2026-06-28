@@ -23,4 +23,4 @@ test.db
 htmlcov/
 coverage.xml
 
-chroma_data/
+chroma_data/backend/chroma_data/

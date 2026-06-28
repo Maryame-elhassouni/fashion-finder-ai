@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from backend.app.api.routes import auth, users, categories, articles , search
+from app.api.routes import auth, users, categories, articles , search
 
 
 

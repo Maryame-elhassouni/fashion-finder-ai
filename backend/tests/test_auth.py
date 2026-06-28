@@ -13,7 +13,7 @@ def test_register_duplicate_email(client):
 def test_login_success(client):
     # Register
     r = client.post("/auth/register", json={
-        "email": "login@mode.com", "full_name": "LA", "password": "pass123"
+        "email": "login@mode.com", "full_name": "LAYLA", "password": "pass123"
     })
     # Vérifier que le register a réussi avant de tenter le login
     assert r.status_code == 201, f"Register failed: {r.json()}"

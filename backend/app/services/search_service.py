@@ -1,4 +1,4 @@
-from backend.app.models.article import Article
+from app.models.article import Article
 
 def extract_keywords(description: str) -> list[str]:
     stop_words = {

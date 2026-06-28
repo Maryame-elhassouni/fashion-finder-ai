@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from enum import Enum
-from backend.app.schemas.article import ArticleResponse
+from app.schemas.article import ArticleResponse
 
 class SortBy(str, Enum):
     relevance  = "relevance"

@@ -23,14 +23,14 @@ if config.config_file_name is not None:
 # =====================================================
 # IMPORT YOUR MODELS (IMPORTANT)
 # =====================================================
-from backend.app.core.database import Base
-import backend.app.models  # MUST import all models via __init__.py
+from app.core.database import Base
+import app.models  # MUST import all models via __init__.py
 
 # Optional explicit imports (safe fallback)
-from backend.app.models.category import Category
-from backend.app.models.article import Article
-from backend.app.models.user import User
-from backend.app.models.search_history import SearchHistory
+from app.models.category import Category
+from app.models.article import Article
+from app.models.user import User
+from app.models.search_history import SearchHistory
 
 target_metadata = Base.metadata
 
