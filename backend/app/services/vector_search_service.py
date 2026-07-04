@@ -1,7 +1,9 @@
+import time
+from app.core.database import SessionLocal
 from app.core.chroma import get_collection
 from app.services.embedding_service import generate_embedding
 from app.services.ai_service import enrich_query
-
+from app.models.ai_log import AILog
 
 def vector_search(
     description: str,
@@ -45,3 +47,14 @@ def vector_search(
             })
 
     return output
+
+def log_ai_call(operation: str, success: bool, duration_ms: int, error: str = None):
+    db = SessionLocal()
+    try:
+        db.add(AILog(
+            operation=operation, success=success,
+            duration_ms=duration_ms, error_message=error
+        ))
+        db.commit()
+    finally:
+        db.close()

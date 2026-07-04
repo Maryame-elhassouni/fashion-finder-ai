@@ -3,7 +3,23 @@ import google.generativeai as genai
 from app.core.config import settings
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+model = genai.GenerativeModel("gemini-2.5-flash")
+
+def classify_category(description: str) -> str:
+    """Classifie automatiquement en UN SEUL slug de catégorie."""
+    prompt = f"""
+Classe ce vêtement en UN SEUL MOT parmi:
+hauts, bas, robes, vestes, chaussures, accessoires
+Description : "{description}"
+"""
+    try:
+        resp = model.generate_content(prompt)
+        slug = resp.text.strip().lower().split()[0]
+        valid = {"hauts","bas","robes","vestes","chaussures","accessoires"}
+        return slug if slug in valid else "hauts"
+    except Exception as e:
+        print(f"[Gemini] classify_category erreur: {e}")
+        return "hauts"
 
 def extract_attributes(description: str) -> dict:
     prompt = f"""

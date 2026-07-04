@@ -1,12 +1,17 @@
+import os
 import time
-from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session, joinedload
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.security import get_optional_user, get_current_user
+from app.core.simple_cache import (
+    make_cache_key,
+    cache_get,
+    cache_set,
+)
 
 from app.models.article import Article
 from app.models.category import Category
@@ -17,133 +22,315 @@ from app.schemas.search import (
     SearchRequest,
     SearchResponse,
     ArticleWithScore,
-    SortBy
 )
 
 from app.schemas.article import ArticleResponse
+
 from app.services.search_service import (
     extract_keywords,
     compute_relevance_score,
-    score_to_label
+    score_to_label,
 )
 
-from pydantic import BaseModel
+from app.services.vector_search_service import vector_search
 
 
-router = APIRouter(prefix="/search", tags=["Recherche"])
+router = APIRouter(
+    prefix="/search",
+    tags=["Recherche"],
+)
 
 
-# =========================
-# 🔎 SEARCH ENDPOINT
-# =========================
 @router.post("/", response_model=SearchResponse)
 def search_articles(
     data: SearchRequest,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_optional_user)
+    current_user: User | None = Depends(get_optional_user),
 ):
     start_time = time.time()
 
-    keywords = extract_keywords(data.description)
+    # ---------------- Validation ----------------
 
-    query = db.query(Article).options(joinedload(Article.category))
+    if (
+        data.price_min is not None
+        and data.price_max is not None
+        and data.price_min > data.price_max
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="price_min must be <= price_max",
+        )
 
-    # =========================
-    # CATEGORY FILTER
-    # =========================
-    if data.category_filter:
-        cat = db.query(Category).filter(
-            Category.slug == data.category_filter
-        ).first()
+    search_type = "ai"
+    ai_results = []
 
-        if not cat:
-            raise HTTPException(status_code=400, detail="Category not found")
+    # ---------------- Cache ----------------
 
-        query = query.filter(Article.category_id == cat.id)
+    cache_key = make_cache_key(
+        "search",
+        data.description,
+        data.category_filter,
+        data.price_min,
+        data.price_max,
+        data.sort_by,
+    )
 
-    # =========================
-    # PRICE FILTER
-    # =========================
-    if data.price_min is not None and data.price_max is not None:
-        if data.price_min > data.price_max:
-            raise HTTPException(status_code=400, detail="price_min > price_max")
+    cached = None
 
-    if data.price_min is not None:
-        query = query.filter(Article.price >= data.price_min)
+    # Désactiver le cache pendant pytest
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        cached = cache_get(cache_key)
 
-    if data.price_max is not None:
-        query = query.filter(Article.price <= data.price_max)
+    if cached is not None:
+        ai_results = cached
 
-    # =========================
-    # KEYWORDS FILTER
-    # =========================
-    if keywords:
-        conditions = [
-            or_(
-                Article.name.ilike(f"%{kw}%"),
-                Article.description.ilike(f"%{kw}%")
+    else:
+
+        try:
+
+            category_id = None
+
+            if data.category_filter:
+                cat = (
+                    db.query(Category)
+                    .filter(Category.slug == data.category_filter)
+                    .first()
+                )
+
+                if not cat:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Catégorie introuvable",
+                    )
+
+                category_id = cat.id
+
+            ai_results = vector_search(
+                description=data.description,
+                category_id=category_id,
+                n_results=50,
             )
-            for kw in keywords
+
+            if "PYTEST_CURRENT_TEST" not in os.environ:
+                cache_set(cache_key, ai_results)
+
+        except HTTPException:
+            raise
+
+        except Exception as e:
+            print(f"[Search] IA indisponible : {e}")
+
+            search_type = "keywords"
+            ai_results = []
+
+    # ==========================================================
+    # RECHERCHE VECTORIELLE
+    # ==========================================================
+
+    if search_type == "ai" and ai_results:
+
+        article_ids = [
+            r["article_id"]
+            for r in ai_results
         ]
-        query = query.filter(or_(*conditions))
 
-    all_articles = query.all()
+        score_map = {
+            r["article_id"]: r["similarity_score"]
+            for r in ai_results
+        }
 
-    # =========================
-    # SCORING
-    # =========================
-    scored = []
-    for article in all_articles:
-        score = compute_relevance_score(article, keywords)
-        scored.append({
-            "article": article,
-            "score": score,
-            "score_label": score_to_label(score)
-        })
+        articles_db = (
+            db.query(Article)
+            .options(joinedload(Article.category))
+            .filter(Article.id.in_(article_ids))
+            .all()
+        )
+
+        # Conserver l'ordre renvoyé par ChromaDB
+        articles_map = {
+            article.id: article
+            for article in articles_db
+        }
+
+        articles = [
+            articles_map[id_]
+            for id_ in article_ids
+            if id_ in articles_map
+        ]
+
+        # ---------- Filtre catégorie ----------
+
+        if data.category_filter:
+            articles = [
+                article
+                for article in articles
+                if article.category
+                and article.category.slug == data.category_filter
+            ]
+
+        # ---------- Filtre prix ----------
+
+        if data.price_min is not None:
+            articles = [
+                article
+                for article in articles
+                if article.price >= data.price_min
+            ]
+
+        if data.price_max is not None:
+            articles = [
+                article
+                for article in articles
+                if article.price <= data.price_max
+            ]
+
+        scored = []
+
+        for article in articles:
+
+            score = score_map.get(article.id, 0.0)
+
+            if score > 0:
+
+                scored.append(
+                    {
+                        "article": article,
+                        "score": score,
+                        "score_label": score_to_label(score),
+                    }
+                )
+
+        scored.sort(
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+
+    else:
+                # ==========================================================
+        # FALLBACK RECHERCHE PAR MOTS-CLÉS
+        # ==========================================================
+
+        search_type = "keywords"
+
+        keywords = extract_keywords(data.description)
+
+        query = (
+            db.query(Article)
+            .options(joinedload(Article.category))
+        )
+
+        if data.category_filter:
+
+            cat = (
+                db.query(Category)
+                .filter(Category.slug == data.category_filter)
+                .first()
+            )
+
+            if not cat:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Catégorie introuvable",
+                )
+
+            query = query.filter(
+                Article.category_id == cat.id
+            )
+
+        if data.price_min is not None:
+            query = query.filter(
+                Article.price >= data.price_min
+            )
+
+        if data.price_max is not None:
+            query = query.filter(
+                Article.price <= data.price_max
+            )
+
+        if keywords:
+
+            conditions = [
+                or_(
+                    Article.name.ilike(f"%{kw}%"),
+                    Article.description.ilike(f"%{kw}%"),
+                )
+                for kw in keywords
+            ]
+
+            query = query.filter(or_(*conditions))
+
+        all_articles = query.all()
+
+        scored = []
+
+        for article in all_articles:
+
+            score = compute_relevance_score(
+                article,
+                keywords,
+            )
+
+            if score > 0:
+
+                scored.append(
+                    {
+                        "article": article,
+                        "score": score,
+                        "score_label": score_to_label(score),
+                    }
+                )
+
+        scored.sort(
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+
+    # ==========================================================
+    # PAGINATION
+    # ==========================================================
 
     total = len(scored)
 
-    # =========================
-    # SORT
-    # =========================
-    if data.sort_by == SortBy.relevance:
-        scored.sort(key=lambda x: x["score"], reverse=True)
-    elif data.sort_by == SortBy.price_asc:
-        scored.sort(key=lambda x: x["article"].price)
-    elif data.sort_by == SortBy.price_desc:
-        scored.sort(key=lambda x: x["article"].price, reverse=True)
-    elif data.sort_by == SortBy.newest:
-        scored.sort(key=lambda x: x["article"].created_at, reverse=True)
+    total_pages = max(
+        1,
+        (total + data.size - 1) // data.size,
+    )
 
-    # =========================
-    # PAGINATION
-    # =========================
-    total_pages = max(1, (total + data.size - 1) // data.size)
     offset = (data.page - 1) * data.size
+
     page_items = scored[offset: offset + data.size]
 
     results = [
         ArticleWithScore(
-            article=ArticleResponse.model_validate(item["article"]),
+            article=ArticleResponse.model_validate(
+                item["article"]
+            ),
             score=item["score"],
-            score_label=item["score_label"]
+            score_label=item["score_label"],
         )
         for item in page_items
     ]
 
-    duration_ms = int((time.time() - start_time) * 1000)
+    duration_ms = int(
+        (time.time() - start_time) * 1000
+    )
 
-    # =========================
-    # SAVE HISTORY
-    # =========================
+    # ==========================================================
+    # HISTORIQUE
+    # ==========================================================
+
     if current_user:
-        db.add(SearchHistory(
-            user_id=current_user.id,
-            description=data.description,
-            category_filter=data.category_filter,
-            results_count=total,
-            duration_ms=duration_ms
-        ))
+
+        db.add(
+            SearchHistory(
+                user_id=current_user.id,
+                description=data.description,
+                category_filter=data.category_filter,
+                results_count=total,
+                duration_ms=duration_ms,
+            )
+        )
+
         db.commit()
 
     return SearchResponse(
@@ -153,45 +340,33 @@ def search_articles(
         size=data.size,
         total_pages=total_pages,
         results=results,
-        search_type="keywords",
+        search_type=search_type,
         duration_ms=duration_ms,
         filters_applied={
             "category": data.category_filter,
             "price_min": data.price_min,
             "price_max": data.price_max,
-            "sort_by": data.sort_by
-        }
+            "sort_by": data.sort_by,
+        },
     )
 
 
-# =========================
-# 📜 SEARCH HISTORY SCHEMA
-# =========================
-class SearchHistoryItem(BaseModel):
-    id: int
-    description: str
-    category_filter: str | None
-    results_count: int
-    duration_ms: int | None
-    created_at: datetime
+# ==========================================================
+# HISTORIQUE DES RECHERCHES
+# ==========================================================
 
-    class Config:
-        from_attributes = True
-
-
-# =========================
-# 📜 GET HISTORY ENDPOINT
-# =========================
-@router.get("/history", response_model=list[SearchHistoryItem])
+@router.get("/history")
 def get_search_history(
-    limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    return (
+    history = (
         db.query(SearchHistory)
-        .filter(SearchHistory.user_id == current_user.id)
-        .order_by(SearchHistory.created_at.desc())
-        .limit(limit)
+        .filter(
+            SearchHistory.user_id == current_user.id
+        )
+        .order_by(SearchHistory.id.desc())
         .all()
     )
+
+    return history
